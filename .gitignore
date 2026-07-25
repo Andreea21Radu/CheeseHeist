@@ -1,0 +1,21 @@
+# virtual environment
+.venv/
+
+# python cache files
+__pycache__/
+*.py[cod]
+
+# pytest cache
+.pytest_cache/
+
+# vscode local settings
+.vscode/
+
+# generated files
+data/generated_levels/
+data/saved_models/
+data/results/
+
+# operating system files
+.DS_Store
+Thumbs.db
