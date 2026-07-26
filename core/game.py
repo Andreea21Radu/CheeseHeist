@@ -3,8 +3,7 @@
 import pygame
 
 from config import settings
-from generation.level_manager import LevelManager
-from generation.sample_level import SAMPLE_LEVEL
+from generation.maze_generator import MazeGenerator
 from graphics.asset_manager import AssetManager
 from graphics.renderer import Renderer
 
@@ -22,7 +21,9 @@ class Game:
             )
         )
 
-        pygame.display.set_caption(settings.WINDOW_TITLE)
+        pygame.display.set_caption(
+            settings.WINDOW_TITLE
+        )
 
         self.clock = pygame.time.Clock()
         self.is_running = True
@@ -30,8 +31,16 @@ class Game:
         # we load every image only once
         self.assets = AssetManager()
 
-        # we create a temporary static level for task 2
-        self.level = LevelManager(SAMPLE_LEVEL)
+        # we generate the first procedural maze
+        self.maze_generator = MazeGenerator(
+            rows=settings.GRID_ROWS,
+            columns=settings.GRID_COLUMNS,
+            seed=settings.DEFAULT_MAZE_SEED,
+        )
+
+        self.level = (
+            self.maze_generator.generate_maze()
+        )
 
         # the renderer receives everything needed for drawing
         self.renderer = Renderer(
@@ -39,9 +48,28 @@ class Game:
             self.assets,
         )
 
-        self.font = pygame.font.Font(None, 34)
+        self.font = pygame.font.Font(
+            None,
+            34,
+        )
 
-        # we print the map once for debugging
+        # we print the first generated map for debugging
+        print(self.level.to_text())
+
+    def generate_new_level(self) -> None:
+        """Generate and display a new procedural maze."""
+
+        self.maze_generator = MazeGenerator(
+            rows=settings.GRID_ROWS,
+            columns=settings.GRID_COLUMNS,
+        )
+
+        self.level = (
+            self.maze_generator.generate_maze()
+        )
+
+        print()
+        print("Generated a new maze:")
         print(self.level.to_text())
 
     def handle_events(self) -> None:
@@ -55,34 +83,50 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     self.is_running = False
 
+                if event.key == pygame.K_r:
+                    self.generate_new_level()
+
     def update(self) -> None:
         """Update the current game state."""
 
-        # the level is static during task 2
+        # there are no moving entities during task 3
         pass
 
     def draw_title(self) -> None:
         """Draw the current development milestone title."""
 
         title_surface = self.font.render(
-            "Task 2 - Static Grid Preview",
+            (
+                "Task 3 - Procedural Maze | "
+                "Press R to regenerate"
+            ),
             True,
             settings.TEXT_COLOR,
         )
 
         self.screen.blit(
             title_surface,
-            (settings.MAP_OFFSET_X, 30),
+            (
+                settings.MAP_OFFSET_X,
+                30,
+            ),
         )
 
     def draw(self) -> None:
         """Draw the current frame."""
 
-        self.screen.fill(settings.BACKGROUND_COLOR)
+        self.screen.fill(
+            settings.BACKGROUND_COLOR
+        )
 
         self.draw_title()
-        self.renderer.draw_level(self.level)
-        self.renderer.draw_grid_lines(self.level)
+        self.renderer.draw_level(
+            self.level
+        )
+
+        self.renderer.draw_grid_lines(
+            self.level
+        )
 
         pygame.display.flip()
 
@@ -94,6 +138,8 @@ class Game:
             self.update()
             self.draw()
 
-            self.clock.tick(settings.FPS)
+            self.clock.tick(
+                settings.FPS
+            )
 
         pygame.quit()

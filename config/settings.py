@@ -14,6 +14,9 @@ TILE_SIZE = 32
 # grid validation settings
 MINIMUM_GRID_SIZE = 9
 
+# maze generation settings
+DEFAULT_MAZE_SEED = None
+
 # map positioning
 MAP_OFFSET_X = 40
 MAP_OFFSET_Y = 80
