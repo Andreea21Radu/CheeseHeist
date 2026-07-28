@@ -68,22 +68,17 @@ class LevelManager:
         row, column = position
         self.grid[row][column] = tile_type
 
-    def is_walkable(self, position: Position) -> bool:
-        """Return True when the mouse can enter the selected cell."""
+    def is_walkable(self, position: tuple[int, int],) -> bool:
+        """Return whether an entity can enter a position."""
 
         if not self.is_inside_grid(position):
             return False
 
-        tile_type = self.get_tile(position)
+        tile_type = self.get_tile(
+            position
+        )
 
-        walkable_tiles = {
-            TileType.FLOOR,
-            TileType.HOME,
-            TileType.CHEESE,
-            TileType.TRAP,
-        }
-
-        return tile_type in walkable_tiles
+        return tile_type != TileType.WALL
 
     def get_neighbors(self, position: Position) -> list[Position]:
         """Return the walkable neighbors in the four main directions."""

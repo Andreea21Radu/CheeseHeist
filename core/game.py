@@ -3,6 +3,8 @@
 import pygame
 
 from config import settings
+from core.game_logic import GameLogic
+from core.game_state import GameState
 from entities.entity_manager import EntityManager
 from generation.level_manager import LevelManager
 from generation.level_validator import LevelValidator
@@ -30,6 +32,10 @@ class Game:
 
         self.clock = pygame.time.Clock()
         self.is_running = True
+
+        # control the speed of continuous movement
+        self.last_move_time = 0
+        self.move_delay = 160
 
         self.assets = AssetManager()
 
@@ -59,6 +65,11 @@ class Game:
             EntityManager.from_level(
                 self.level
             )
+        )
+
+        self.game_logic = GameLogic(
+            self.level,
+            self.entity_manager,
         )
 
         self.show_bfs_path = (
@@ -111,7 +122,7 @@ class Game:
     def update_level_components(
         self,
     ) -> None:
-        """Recreate everything that depends on the current level."""
+        """Recreate everything dependent on the current level."""
 
         self.level_validator = LevelValidator(
             self.level
@@ -133,6 +144,14 @@ class Game:
             )
         )
 
+        self.game_logic = GameLogic(
+            self.level,
+            self.entity_manager,
+        )
+
+        # allow immediate movement after generating a new level
+        self.last_move_time = 0
+
     def generate_new_level(
         self,
     ) -> None:
@@ -151,10 +170,12 @@ class Game:
     def print_level_information(
         self,
     ) -> None:
-        """Print debugging information about the current level."""
+        """Print debugging information about the level."""
 
         print()
-        print(self.level.to_text())
+        print(
+            self.level.to_text()
+        )
 
         print(
             "Shortest path length:",
@@ -181,30 +202,94 @@ class Game:
             if event.key == pygame.K_ESCAPE:
                 self.is_running = False
 
-            if event.key == pygame.K_r:
+            elif event.key == pygame.K_r:
                 self.generate_new_level()
 
-            if event.key == pygame.K_b:
+            elif event.key == pygame.K_b:
                 self.show_bfs_path = (
                     not self.show_bfs_path
                 )
+
+    def get_pressed_movement(
+        self,
+    ) -> tuple[int, int] | None:
+        """Return the movement associated with a held key."""
+
+        pressed_keys = pygame.key.get_pressed()
+
+        if (
+            pressed_keys[pygame.K_UP]
+            or pressed_keys[pygame.K_w]
+        ):
+            return -1, 0
+
+        if (
+            pressed_keys[pygame.K_DOWN]
+            or pressed_keys[pygame.K_s]
+        ):
+            return 1, 0
+
+        if (
+            pressed_keys[pygame.K_LEFT]
+            or pressed_keys[pygame.K_a]
+        ):
+            return 0, -1
+
+        if (
+            pressed_keys[pygame.K_RIGHT]
+            or pressed_keys[pygame.K_d]
+        ):
+            return 0, 1
+
+        return None
+
+    def handle_continuous_movement(
+        self,
+    ) -> None:
+        """Move continuously while a movement key is held."""
+
+        if not self.game_logic.is_playing():
+            return
+
+        movement = self.get_pressed_movement()
+
+        if movement is None:
+            return
+
+        current_time = pygame.time.get_ticks()
+
+        if (
+            current_time - self.last_move_time
+            < self.move_delay
+        ):
+            return
+
+        row_change, column_change = movement
+
+        self.game_logic.move_mouse(
+            row_change,
+            column_change,
+        )
+
+        # delay both valid and blocked movement attempts
+        self.last_move_time = current_time
 
     def update(
         self,
     ) -> None:
         """Update the current game state."""
 
-        # movement and collision logic will be added in task 6
-        pass
+        self.handle_continuous_movement()
 
     def draw_title(
         self,
     ) -> None:
-        """Draw the current development milestone title."""
+        """Draw the current gameplay controls."""
 
         title_text = (
-            "Task 5 - Entity System | "
-            "R: new maze | B: show path"
+            "Task 6 - Game Logic | "
+            "WASD/Arrows: move | "
+            "R: restart | B: path"
         )
 
         title_surface = self.font.render(
@@ -224,39 +309,44 @@ class Game:
     def draw_level_information(
         self,
     ) -> None:
-        """Draw information about the current level."""
+        """Draw gameplay and level information."""
 
-        path_length_text = (
+        mouse = self.entity_manager.mouse
+
+        path_text = (
             "Shortest path: "
             f"{self.shortest_path_length} steps"
         )
 
-        playability_text = (
-            "Playable level: yes"
+        moves_text = (
+            f"Moves: {mouse.number_of_moves}"
         )
 
-        trap_count_text = (
-            "Traps: "
-            f"{len(self.entity_manager.traps)}"
+        cheese_status = (
+            "Cheese: collected"
+            if mouse.has_cheese
+            else "Cheese: not collected"
         )
 
-        path_length_surface = self.font.render(
-            path_length_text,
-            True,
-            settings.TEXT_COLOR,
-        )
+        if self.game_logic.state == GameState.WON:
+            game_status = "Status: YOU WON!"
 
-        playability_surface = self.font.render(
-            playability_text,
-            True,
-            settings.ACCENT_COLOR,
-        )
+        elif self.game_logic.state == GameState.LOST:
+            game_status = "Status: GAME OVER"
 
-        trap_count_surface = self.font.render(
-            trap_count_text,
-            True,
-            settings.TEXT_COLOR,
-        )
+        else:
+            game_status = "Status: playing"
+
+        information = [
+            path_text,
+            moves_text,
+            cheese_status,
+            game_status,
+            (
+                "Traps: "
+                f"{len(self.entity_manager.traps)}"
+            ),
+        ]
 
         information_x = (
             settings.MAP_OFFSET_X
@@ -265,29 +355,28 @@ class Game:
             + 35
         )
 
-        self.screen.blit(
-            path_length_surface,
-            (
-                information_x,
-                settings.MAP_OFFSET_Y,
-            ),
-        )
+        for index, text in enumerate(
+            information
+        ):
+            text_color = settings.TEXT_COLOR
 
-        self.screen.blit(
-            playability_surface,
-            (
-                information_x,
-                settings.MAP_OFFSET_Y + 45,
-            ),
-        )
+            if index == 3:
+                text_color = settings.ACCENT_COLOR
 
-        self.screen.blit(
-            trap_count_surface,
-            (
-                information_x,
-                settings.MAP_OFFSET_Y + 90,
-            ),
-        )
+            text_surface = self.font.render(
+                text,
+                True,
+                text_color,
+            )
+
+            self.screen.blit(
+                text_surface,
+                (
+                    information_x,
+                    settings.MAP_OFFSET_Y
+                    + index * 42,
+                ),
+            )
 
     def draw(
         self,
@@ -300,24 +389,20 @@ class Game:
 
         self.draw_title()
 
-        # draw the maze background first
         self.renderer.draw_level(
             self.level
         )
 
-        # draw cheese, traps and mouse over the maze
         self.renderer.draw_entities(
             self.entity_manager
             .get_active_entities()
         )
 
-        # draw grid lines over the level and entities
         if settings.SHOW_GRID_LINES:
             self.renderer.draw_grid_lines(
                 self.level
             )
 
-        # draw BFS last so the point remains visible on the cheese
         if self.show_bfs_path:
             self.renderer.draw_debug_path(
                 self.bfs_path
