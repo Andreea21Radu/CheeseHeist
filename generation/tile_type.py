@@ -1,13 +1,13 @@
-"""Tile types used inside a Cheese Heist level."""
+"""Define the possible tile types used by a level."""
 
 from enum import IntEnum
 
 
 class TileType(IntEnum):
-    """Represent every type of cell that can appear in the grid."""
+    """Represent the possible tiles inside a level."""
 
-    WALL = 0
-    FLOOR = 1
+    FLOOR = 0
+    WALL = 1
     HOME = 2
     CHEESE = 3
     TRAP = 4
