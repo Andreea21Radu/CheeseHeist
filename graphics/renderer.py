@@ -98,3 +98,32 @@ class Renderer:
                     tile_rectangle,
                     width=1,
                 )
+
+    def draw_debug_path(self, path: list[tuple[int, int]],) -> None:
+        """Draw the BFS path without covering the mouse home."""
+
+        if len(path) <= 1:
+            return
+
+        # we skip only the first position because it represents the home
+        path_without_home = path[1:]
+
+        for row, column in path_without_home:
+            center_x = (
+                settings.MAP_OFFSET_X
+                + column * settings.TILE_SIZE
+                + settings.TILE_SIZE // 2
+            )
+
+            center_y = (
+                settings.MAP_OFFSET_Y
+                + row * settings.TILE_SIZE
+                + settings.TILE_SIZE // 2
+            )
+
+            pygame.draw.circle(
+                self.screen,
+                settings.DEBUG_PATH_COLOR,
+                (center_x, center_y),
+                radius=5,
+            )
