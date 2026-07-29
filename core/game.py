@@ -32,10 +32,13 @@ class Game:
 
         self.clock = pygame.time.Clock()
         self.is_running = True
+        self.has_started = False
 
-        # control the speed of continuous movement
         self.last_move_time = 0
-        self.move_delay = 160
+        self.move_delay = settings.MOVE_DELAY
+
+        self.cheese_message_until = 0
+        self.previous_cheese_state = False
 
         self.assets = AssetManager()
 
@@ -79,16 +82,6 @@ class Game:
         self.renderer = Renderer(
             self.screen,
             self.assets,
-        )
-
-        self.font = pygame.font.Font(
-            None,
-            30,
-        )
-
-        self.large_font = pygame.font.Font(
-            None,
-            44,
         )
 
         self.print_level_information()
@@ -154,8 +147,9 @@ class Game:
             self.entity_manager,
         )
 
-        # allow immediate movement after generating a new level
         self.last_move_time = 0
+        self.cheese_message_until = 0
+        self.previous_cheese_state = False
 
     def generate_new_level(
         self,
@@ -207,10 +201,22 @@ class Game:
             if event.key == pygame.K_ESCAPE:
                 self.is_running = False
 
-            elif event.key == pygame.K_r:
+            elif (
+                event.key == pygame.K_SPACE
+                and not self.has_started
+            ):
+                self.has_started = True
+
+            elif (
+                event.key == pygame.K_r
+                and self.has_started
+            ):
                 self.generate_new_level()
 
-            elif event.key == pygame.K_b:
+            elif (
+                event.key == pygame.K_b
+                and self.has_started
+            ):
                 self.show_bfs_path = (
                     not self.show_bfs_path
                 )
@@ -248,11 +254,44 @@ class Game:
 
         return None
 
+    def update_mouse_animation_state(
+        self,
+        current_time: int,
+    ) -> None:
+        """Update whether the mouse should use walking frames."""
+
+        mouse = self.entity_manager.mouse
+        movement = self.get_pressed_movement()
+
+        can_move = (
+            self.has_started
+            and self.game_logic.is_playing()
+            and not self.game_logic.is_stunned(
+                current_time
+            )
+        )
+
+        if movement is None or not can_move:
+            mouse.stop_moving()
+            return
+
+        row_change, column_change = movement
+
+        mouse.set_direction_from_movement(
+            row_change,
+            column_change,
+        )
+
+        mouse.start_moving()
+
     def handle_continuous_movement(
         self,
         current_time: int,
     ) -> None:
         """Move continuously while a movement key is held."""
+
+        if not self.has_started:
+            return
 
         if not self.game_logic.is_playing():
             return
@@ -281,13 +320,36 @@ class Game:
             current_time,
         )
 
-        # delay both valid and blocked movement attempts
         self.last_move_time = current_time
+
+    def update_cheese_message(
+        self,
+        current_time: int,
+    ) -> None:
+        """Show a temporary message after cheese collection."""
+
+        has_cheese = (
+            self.entity_manager.mouse.has_cheese
+        )
+
+        if (
+            has_cheese
+            and not self.previous_cheese_state
+        ):
+            self.cheese_message_until = (
+                current_time
+                + settings.CHEESE_MESSAGE_DURATION
+            )
+
+        self.previous_cheese_state = has_cheese
 
     def update(
         self,
     ) -> None:
         """Update the current game state."""
+
+        if not self.has_started:
+            return
 
         current_time = pygame.time.get_ticks()
 
@@ -295,33 +357,16 @@ class Game:
             current_time
         )
 
+        self.update_mouse_animation_state(
+            current_time
+        )
+
         self.handle_continuous_movement(
             current_time
         )
 
-    def draw_title(
-        self,
-    ) -> None:
-        """Draw the current gameplay controls."""
-
-        title_text = (
-            "Cheese Heist | "
-            "WASD/Arrows: move | "
-            "R: new maze | B: path"
-        )
-
-        title_surface = self.font.render(
-            title_text,
-            True,
-            settings.TEXT_COLOR,
-        )
-
-        self.screen.blit(
-            title_surface,
-            (
-                settings.MAP_OFFSET_X,
-                25,
-            ),
+        self.update_cheese_message(
+            current_time
         )
 
     def get_game_status(
@@ -331,45 +376,57 @@ class Game:
         """Return the current status text."""
 
         if self.game_logic.state == GameState.WON:
-            return "Status: YOU WON!"
+            return "YOU WON"
 
         if self.game_logic.is_stunned(
             current_time
         ):
-            return "Status: STUNNED"
+            return "STUNNED"
 
         if self.game_logic.is_release_message_visible(
             current_time
         ):
-            return "Status: YOU ARE FREE!"
+            return "FREE AGAIN"
 
-        return "Status: playing"
+        return "PLAYING"
 
-    def draw_level_information(
+    def draw_game(
         self,
+        current_time: int,
     ) -> None:
-        """Draw gameplay and level information."""
+        """Draw the active game screen."""
 
-        current_time = pygame.time.get_ticks()
-        mouse = self.entity_manager.mouse
-
-        path_text = (
-            "Shortest path: "
-            f"{self.shortest_path_length} steps"
+        self.screen.fill(
+            settings.BACKGROUND_COLOR
         )
 
-        moves_text = (
-            f"Moves: {mouse.number_of_moves}"
+        self.renderer.draw_title()
+
+        self.renderer.draw_level(
+            self.level
         )
 
-        cheese_status = (
-            "Cheese: collected"
-            if mouse.has_cheese
-            else "Cheese: not collected"
+        if self.show_bfs_path:
+            self.renderer.draw_debug_path(
+                self.bfs_path
+            )
+
+        self.renderer.draw_entities(
+            self.entity_manager
+            .get_active_entities(),
+            current_time,
         )
 
-        game_status = self.get_game_status(
-            current_time
+        if settings.SHOW_GRID_LINES:
+            self.renderer.draw_grid_lines(
+                self.level
+            )
+
+        stun_seconds = (
+            self.game_logic
+            .get_stun_seconds_remaining(
+                current_time
+            )
         )
 
         active_traps = sum(
@@ -378,161 +435,57 @@ class Game:
             if trap.is_active
         )
 
-        information = [
-            path_text,
-            moves_text,
-            cheese_status,
-            game_status,
-            (
-                "Active traps: "
-                f"{active_traps}"
+        self.renderer.draw_sidebar(
+            shortest_path_length=(
+                self.shortest_path_length
             ),
-        ]
-
-        if self.game_logic.is_stunned(
-            current_time
-        ):
-            seconds_remaining = (
-                self.game_logic
-                .get_stun_seconds_remaining(
-                    current_time
-                )
-            )
-
-            information.append(
-                "Trap penalty: "
-                f"{seconds_remaining}"
-            )
-
-        elif (
-            self.game_logic
-            .is_release_message_visible(
+            moves=(
+                self.entity_manager
+                .mouse
+                .number_of_moves
+            ),
+            has_cheese=(
+                self.entity_manager
+                .mouse
+                .has_cheese
+            ),
+            active_traps=active_traps,
+            status=self.get_game_status(
                 current_time
-            )
-        ):
-            information.append(
-                "You can move again!"
-            )
-
-        information_x = (
-            settings.MAP_OFFSET_X
-            + settings.GRID_COLUMNS
-            * settings.TILE_SIZE
-            + 35
+            ),
+            stun_seconds=stun_seconds,
+            has_won=self.game_logic.has_won(),
         )
 
-        for index, text in enumerate(
-            information
-        ):
-            text_color = settings.TEXT_COLOR
+        self.renderer.draw_mouse_countdown(
+            self.entity_manager.mouse,
+            stun_seconds,
+        )
 
-            if index >= 3:
-                text_color = settings.ACCENT_COLOR
-
-            text_surface = self.font.render(
-                text,
-                True,
-                text_color,
-            )
-
-            self.screen.blit(
-                text_surface,
-                (
-                    information_x,
-                    settings.MAP_OFFSET_Y
-                    + index * 42,
-                ),
-            )
-
-    def draw_trap_penalty_overlay(
-        self,
-    ) -> None:
-        """Draw a countdown above the stunned mouse."""
-
-        current_time = pygame.time.get_ticks()
-
-        if not self.game_logic.is_stunned(
+        if (
             current_time
+            < self.cheese_message_until
+            and not self.game_logic.has_won()
         ):
-            return
+            self.renderer.draw_cheese_message()
 
-        seconds_remaining = (
-            self.game_logic
-            .get_stun_seconds_remaining(
-                current_time
-            )
-        )
-
-        mouse = self.entity_manager.mouse
-
-        center_x = (
-            settings.MAP_OFFSET_X
-            + mouse.column
-            * settings.TILE_SIZE
-            + settings.TILE_SIZE // 2
-        )
-
-        text_y = (
-            settings.MAP_OFFSET_Y
-            + mouse.row
-            * settings.TILE_SIZE
-            - 35
-        )
-
-        countdown_surface = (
-            self.large_font.render(
-                str(seconds_remaining),
-                True,
-                settings.ACCENT_COLOR,
-            )
-        )
-
-        countdown_rectangle = (
-            countdown_surface.get_rect(
-                center=(
-                    center_x,
-                    text_y,
-                )
-            )
-        )
-
-        self.screen.blit(
-            countdown_surface,
-            countdown_rectangle,
-        )
+        if self.game_logic.has_won():
+            self.renderer.draw_victory_overlay()
 
     def draw(
         self,
     ) -> None:
         """Draw the current frame."""
 
-        self.screen.fill(
-            settings.BACKGROUND_COLOR
-        )
+        if not self.has_started:
+            self.renderer.draw_start_screen()
 
-        self.draw_title()
+        else:
+            current_time = pygame.time.get_ticks()
 
-        self.renderer.draw_level(
-            self.level
-        )
-
-        self.renderer.draw_entities(
-            self.entity_manager
-            .get_active_entities()
-        )
-
-        if settings.SHOW_GRID_LINES:
-            self.renderer.draw_grid_lines(
-                self.level
+            self.draw_game(
+                current_time
             )
-
-        if self.show_bfs_path:
-            self.renderer.draw_debug_path(
-                self.bfs_path
-            )
-
-        self.draw_trap_penalty_overlay()
-        self.draw_level_information()
 
         pygame.display.flip()
 

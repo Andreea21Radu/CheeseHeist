@@ -1,37 +1,128 @@
 """Global settings used by the Cheese Heist game."""
 
-# window settings
+# -------------------------------------------------
+# window
+# -------------------------------------------------
+
 WINDOW_TITLE = "Cheese Heist"
-WINDOW_WIDTH = 1100
-WINDOW_HEIGHT = 760
+
+WINDOW_WIDTH = 1050
+WINDOW_HEIGHT = 680
+
 FPS = 60
 
-# grid settings
+# -------------------------------------------------
+# maze
+# -------------------------------------------------
+
 GRID_ROWS = 15
 GRID_COLUMNS = 21
-TILE_SIZE = 32
 
-# grid validation settings
+TILE_SIZE = 28
+
 MINIMUM_GRID_SIZE = 9
 
-# maze generation settings
 DEFAULT_MAZE_SEED = None
+
 TRAP_COUNT = 5
 
-# map positioning
-MAP_OFFSET_X = 40
-MAP_OFFSET_Y = 80
+# percentage of removable walls that become new paths
+# increase this value for more alternative routes
+EXTRA_PASSAGE_RATIO = 0.12
 
-# interface settings
-SIDEBAR_WIDTH = 300
+# -------------------------------------------------
+# layout
+# -------------------------------------------------
 
+MAP_OFFSET_X = 30
+MAP_OFFSET_Y = 75
+
+SIDEBAR_WIDTH = 320
+SIDEBAR_GAP = 20
+
+# -------------------------------------------------
+# movement
+# -------------------------------------------------
+
+MOVE_DELAY = 160
+
+MOUSE_ANIMATION_DELAY = 110
+
+# -------------------------------------------------
+# temporary interface messages
+# -------------------------------------------------
+
+CHEESE_MESSAGE_DURATION = 1500
+
+# -------------------------------------------------
 # colors
-BACKGROUND_COLOR = (18, 16, 16)
-TEXT_COLOR = (240, 240, 240)
-ACCENT_COLOR = (240, 190, 60)
-GRID_LINE_COLOR = (40, 36, 34)
-DEBUG_PATH_COLOR = (80, 180, 255)
+# -------------------------------------------------
 
-# debug settings
+BACKGROUND_COLOR = (
+    18,
+    16,
+    16,
+)
+
+PANEL_COLOR = (
+    28,
+    25,
+    24,
+)
+
+OVERLAY_COLOR = (
+    0,
+    0,
+    0,
+    185,
+)
+
+TEXT_COLOR = (
+    240,
+    240,
+    240,
+)
+
+SECONDARY_TEXT_COLOR = (
+    185,
+    180,
+    175,
+)
+
+ACCENT_COLOR = (
+    240,
+    190,
+    60,
+)
+
+SUCCESS_COLOR = (
+    120,
+    220,
+    130,
+)
+
+WARNING_COLOR = (
+    245,
+    150,
+    70,
+)
+
+GRID_LINE_COLOR = (
+    40,
+    36,
+    34,
+)
+
+DEBUG_PATH_COLOR = (
+    80,
+    180,
+    255,
+)
+
+# -------------------------------------------------
+# debug
+# -------------------------------------------------
+
 SHOW_GRID_LINES = True
+
 SHOW_BFS_PATH_BY_DEFAULT = False

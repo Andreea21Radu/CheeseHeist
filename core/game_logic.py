@@ -56,8 +56,7 @@ class GameLogic:
 
         if (
             self.release_message_until > 0
-            and current_time
-            >= self.release_message_until
+            and current_time >= self.release_message_until
         ):
             self.release_message_until = 0
 
@@ -72,12 +71,15 @@ class GameLogic:
         if self.state != GameState.PLAYING:
             return False
 
+        self.mouse.set_direction_from_movement(
+            row_change,
+            column_change,
+        )
+
         if self.is_stunned(current_time):
             return False
 
-        current_row, current_column = (
-            self.mouse.position
-        )
+        current_row, current_column = self.mouse.position
 
         target_position = (
             current_row + row_change,
@@ -200,10 +202,7 @@ class GameLogic:
     ) -> bool:
         """Return whether the release message should be shown."""
 
-        return (
-            self.release_message_until
-            > current_time
-        )
+        return self.release_message_until > current_time
 
     def is_playing(self) -> bool:
         """Return whether the current level is active."""

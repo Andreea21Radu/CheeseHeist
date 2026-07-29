@@ -45,14 +45,14 @@ class AssetManager:
             "mouse/mouse_spritesheet.png"
         )
 
-        # for now we use the first frame from the mouse spritesheet
-        self.mouse = self._extract_sprite(
-            sprite_sheet=self.mouse_spritesheet,
-            x=0,
-            y=0,
-            width=settings.TILE_SIZE,
-            height=settings.TILE_SIZE,
+        self.mouse_animations = (
+            self._load_mouse_animations()
         )
+
+        # compatibility with generic entity rendering
+        self.mouse = self.mouse_animations[
+            "down"
+        ][0]
 
     def _load_image(
         self,
@@ -95,30 +95,20 @@ class AssetManager:
     def _extract_sprite(
         self,
         sprite_sheet: pygame.Surface,
-        x: int,
-        y: int,
-        width: int,
-        height: int,
+        column: int,
+        row: int,
     ) -> pygame.Surface:
-        """Extract and resize one frame from a sprite sheet."""
+        """Extract one 32 by 32 frame from a sprite sheet."""
 
-        sheet_width = sprite_sheet.get_width()
-        sheet_height = sprite_sheet.get_height()
+        source_size = 32
 
-        frame_width = min(
-            width,
-            sheet_width,
-        )
-
-        frame_height = min(
-            height,
-            sheet_height,
-        )
+        source_x = column * source_size
+        source_y = row * source_size
 
         frame = pygame.Surface(
             (
-                frame_width,
-                frame_height,
+                source_size,
+                source_size,
             ),
             pygame.SRCALPHA,
         )
@@ -127,10 +117,10 @@ class AssetManager:
             sprite_sheet,
             (0, 0),
             pygame.Rect(
-                x,
-                y,
-                frame_width,
-                frame_height,
+                source_x,
+                source_y,
+                source_size,
+                source_size,
             ),
         )
 
@@ -141,6 +131,76 @@ class AssetManager:
                 settings.TILE_SIZE,
             ),
         )
+
+    def _extract_animation(
+        self,
+        columns: list[int],
+        row: int,
+    ) -> list[pygame.Surface]:
+        """Extract several animation frames from one row."""
+
+        return [
+            self._extract_sprite(
+                self.mouse_spritesheet,
+                column,
+                row,
+            )
+            for column in columns
+        ]
+
+    def _load_mouse_animations(
+        self,
+    ) -> dict[str, list[pygame.Surface]]:
+        """Load directional mouse walking animations."""
+
+        right_frames = self._extract_animation(
+            columns=[12, 13, 14, 15],
+            row=1,
+        )
+
+        left_frames = [
+            pygame.transform.flip(
+                frame,
+                True,
+                False,
+            )
+            for frame in right_frames
+        ]
+
+        down_frames = self._extract_animation(
+            columns=[0, 1, 2, 3],
+            row=0,
+        )
+
+        up_frames = self._extract_animation(
+            columns=[16, 17, 18, 19],
+            row=2,
+        )
+
+        return {
+            "up": up_frames,
+            "down": down_frames,
+            "left": left_frames,
+            "right": right_frames,
+        }
+
+    def get_mouse_frame(
+        self,
+        direction: str,
+        frame_index: int,
+    ) -> pygame.Surface:
+        """Return one directional mouse animation frame."""
+
+        frames = self.mouse_animations.get(
+            direction,
+            self.mouse_animations["down"],
+        )
+
+        safe_frame_index = (
+            frame_index % len(frames)
+        )
+
+        return frames[safe_frame_index]
 
     def get_image(
         self,
