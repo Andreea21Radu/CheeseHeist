@@ -4,7 +4,7 @@ from entities.entity import Entity, Position
 
 
 class Trap(Entity):
-    """Represent a trap that can affect the mouse."""
+    """Represent a trap that can temporarily stun the mouse."""
 
     def __init__(
         self,
@@ -18,9 +18,10 @@ class Trap(Entity):
         self.is_triggered = False
 
     def trigger(self) -> None:
-        """Mark the trap as triggered."""
+        """Trigger and deactivate the trap."""
 
         self.is_triggered = True
+        self.deactivate()
 
     def reset(self) -> None:
         """Reset the trap state."""

@@ -16,6 +16,7 @@ MINIMUM_GRID_SIZE = 9
 
 # maze generation settings
 DEFAULT_MAZE_SEED = None
+TRAP_COUNT = 5
 
 # map positioning
 MAP_OFFSET_X = 40

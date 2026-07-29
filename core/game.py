@@ -86,6 +86,11 @@ class Game:
             30,
         )
 
+        self.large_font = pygame.font.Font(
+            None,
+            44,
+        )
+
         self.print_level_information()
 
     def generate_valid_level(
@@ -245,18 +250,22 @@ class Game:
 
     def handle_continuous_movement(
         self,
+        current_time: int,
     ) -> None:
         """Move continuously while a movement key is held."""
 
         if not self.game_logic.is_playing():
             return
 
+        if self.game_logic.is_stunned(
+            current_time
+        ):
+            return
+
         movement = self.get_pressed_movement()
 
         if movement is None:
             return
-
-        current_time = pygame.time.get_ticks()
 
         if (
             current_time - self.last_move_time
@@ -269,6 +278,7 @@ class Game:
         self.game_logic.move_mouse(
             row_change,
             column_change,
+            current_time,
         )
 
         # delay both valid and blocked movement attempts
@@ -279,7 +289,15 @@ class Game:
     ) -> None:
         """Update the current game state."""
 
-        self.handle_continuous_movement()
+        current_time = pygame.time.get_ticks()
+
+        self.game_logic.update(
+            current_time
+        )
+
+        self.handle_continuous_movement(
+            current_time
+        )
 
     def draw_title(
         self,
@@ -287,9 +305,9 @@ class Game:
         """Draw the current gameplay controls."""
 
         title_text = (
-            "Task 6 - Game Logic | "
+            "Cheese Heist | "
             "WASD/Arrows: move | "
-            "R: restart | B: path"
+            "R: new maze | B: path"
         )
 
         title_surface = self.font.render(
@@ -306,11 +324,33 @@ class Game:
             ),
         )
 
+    def get_game_status(
+        self,
+        current_time: int,
+    ) -> str:
+        """Return the current status text."""
+
+        if self.game_logic.state == GameState.WON:
+            return "Status: YOU WON!"
+
+        if self.game_logic.is_stunned(
+            current_time
+        ):
+            return "Status: STUNNED"
+
+        if self.game_logic.is_release_message_visible(
+            current_time
+        ):
+            return "Status: YOU ARE FREE!"
+
+        return "Status: playing"
+
     def draw_level_information(
         self,
     ) -> None:
         """Draw gameplay and level information."""
 
+        current_time = pygame.time.get_ticks()
         mouse = self.entity_manager.mouse
 
         path_text = (
@@ -328,14 +368,15 @@ class Game:
             else "Cheese: not collected"
         )
 
-        if self.game_logic.state == GameState.WON:
-            game_status = "Status: YOU WON!"
+        game_status = self.get_game_status(
+            current_time
+        )
 
-        elif self.game_logic.state == GameState.LOST:
-            game_status = "Status: GAME OVER"
-
-        else:
-            game_status = "Status: playing"
+        active_traps = sum(
+            1
+            for trap in self.entity_manager.traps
+            if trap.is_active
+        )
 
         information = [
             path_text,
@@ -343,10 +384,35 @@ class Game:
             cheese_status,
             game_status,
             (
-                "Traps: "
-                f"{len(self.entity_manager.traps)}"
+                "Active traps: "
+                f"{active_traps}"
             ),
         ]
+
+        if self.game_logic.is_stunned(
+            current_time
+        ):
+            seconds_remaining = (
+                self.game_logic
+                .get_stun_seconds_remaining(
+                    current_time
+                )
+            )
+
+            information.append(
+                "Trap penalty: "
+                f"{seconds_remaining}"
+            )
+
+        elif (
+            self.game_logic
+            .is_release_message_visible(
+                current_time
+            )
+        ):
+            information.append(
+                "You can move again!"
+            )
 
         information_x = (
             settings.MAP_OFFSET_X
@@ -360,7 +426,7 @@ class Game:
         ):
             text_color = settings.TEXT_COLOR
 
-            if index == 3:
+            if index >= 3:
                 text_color = settings.ACCENT_COLOR
 
             text_surface = self.font.render(
@@ -377,6 +443,63 @@ class Game:
                     + index * 42,
                 ),
             )
+
+    def draw_trap_penalty_overlay(
+        self,
+    ) -> None:
+        """Draw a countdown above the stunned mouse."""
+
+        current_time = pygame.time.get_ticks()
+
+        if not self.game_logic.is_stunned(
+            current_time
+        ):
+            return
+
+        seconds_remaining = (
+            self.game_logic
+            .get_stun_seconds_remaining(
+                current_time
+            )
+        )
+
+        mouse = self.entity_manager.mouse
+
+        center_x = (
+            settings.MAP_OFFSET_X
+            + mouse.column
+            * settings.TILE_SIZE
+            + settings.TILE_SIZE // 2
+        )
+
+        text_y = (
+            settings.MAP_OFFSET_Y
+            + mouse.row
+            * settings.TILE_SIZE
+            - 35
+        )
+
+        countdown_surface = (
+            self.large_font.render(
+                str(seconds_remaining),
+                True,
+                settings.ACCENT_COLOR,
+            )
+        )
+
+        countdown_rectangle = (
+            countdown_surface.get_rect(
+                center=(
+                    center_x,
+                    text_y,
+                )
+            )
+        )
+
+        self.screen.blit(
+            countdown_surface,
+            countdown_rectangle,
+        )
 
     def draw(
         self,
@@ -408,6 +531,7 @@ class Game:
                 self.bfs_path
             )
 
+        self.draw_trap_penalty_overlay()
         self.draw_level_information()
 
         pygame.display.flip()

@@ -8,4 +8,3 @@ class GameState(Enum):
 
     PLAYING = auto()
     WON = auto()
-    LOST = auto()

@@ -1,8 +1,10 @@
 """Generate playable maze layouts using recursive backtracking."""
 
 import random
+from collections import deque
 from typing import Optional
 
+from config import settings
 from generation.level_manager import LevelManager
 from generation.tile_type import TileType
 
@@ -18,14 +20,17 @@ class MazeGenerator:
         rows: int,
         columns: int,
         seed: Optional[int] = None,
+        trap_count: int = settings.TRAP_COUNT,
     ) -> None:
         self.rows = rows
         self.columns = columns
+        self.trap_count = trap_count
 
         # we use our own random generator so tests can reproduce a maze
         self.random = random.Random(seed)
 
         self._validate_dimensions()
+        self._validate_trap_count()
 
     def _validate_dimensions(self) -> None:
         """Check that the maze dimensions can support the algorithm."""
@@ -38,6 +43,14 @@ class MazeGenerator:
         if self.rows % 2 == 0 or self.columns % 2 == 0:
             raise ValueError(
                 "Maze rows and columns must both be odd."
+            )
+
+    def _validate_trap_count(self) -> None:
+        """Check that the requested trap count is valid."""
+
+        if self.trap_count < 0:
+            raise ValueError(
+                "Trap count cannot be negative."
             )
 
     def generate_empty_grid(self) -> list[list[TileType]]:
@@ -66,8 +79,13 @@ class MazeGenerator:
             range(1, self.columns - 1, 2)
         )
 
-        start_row = self.random.choice(possible_rows)
-        start_column = self.random.choice(possible_columns)
+        start_row = self.random.choice(
+            possible_rows
+        )
+
+        start_column = self.random.choice(
+            possible_columns
+        )
 
         return start_row, start_column
 
@@ -101,8 +119,13 @@ class MazeGenerator:
                 continue
 
             # untouched maze cells are still represented as walls
-            if grid[neighbor_row][neighbor_column] == TileType.WALL:
-                unvisited_neighbors.append(neighbor)
+            if (
+                grid[neighbor_row][neighbor_column]
+                == TileType.WALL
+            ):
+                unvisited_neighbors.append(
+                    neighbor
+                )
 
         return unvisited_neighbors
 
@@ -125,8 +148,13 @@ class MazeGenerator:
             current_column + neighbor_column
         ) // 2
 
-        grid[wall_row][wall_column] = TileType.FLOOR
-        grid[neighbor_row][neighbor_column] = TileType.FLOOR
+        grid[wall_row][wall_column] = (
+            TileType.FLOOR
+        )
+
+        grid[neighbor_row][neighbor_column] = (
+            TileType.FLOOR
+        )
 
     def generate_paths(
         self,
@@ -143,13 +171,15 @@ class MazeGenerator:
         while stack:
             current = stack[-1]
 
-            unvisited_neighbors = self.get_unvisited_neighbors(
-                grid,
-                current,
+            unvisited_neighbors = (
+                self.get_unvisited_neighbors(
+                    grid,
+                    current,
+                )
             )
 
             if not unvisited_neighbors:
-                # we return to the previous cell when this path is finished
+                # return to the previous cell when this path is finished
                 stack.pop()
                 continue
 
@@ -163,19 +193,24 @@ class MazeGenerator:
                 next_cell,
             )
 
-            stack.append(next_cell)
+            stack.append(
+                next_cell
+            )
 
     def get_floor_positions(
         self,
         grid: list[list[TileType]],
     ) -> list[Position]:
-        """Return all currently walkable floor positions."""
+        """Return all currently available floor positions."""
 
         floor_positions = []
 
         for row in range(self.rows):
             for column in range(self.columns):
-                if grid[row][column] == TileType.FLOOR:
+                if (
+                    grid[row][column]
+                    == TileType.FLOOR
+                ):
                     floor_positions.append(
                         (row, column)
                     )
@@ -213,7 +248,9 @@ class MazeGenerator:
 
         for position in floor_positions:
             if position != home_position:
-                possible_positions.append(position)
+                possible_positions.append(
+                    position
+                )
 
         if not possible_positions:
             raise ValueError(
@@ -236,7 +273,7 @@ class MazeGenerator:
         self,
         grid: list[list[TileType]],
         home_position: Position,
-    ) -> None:
+    ) -> Position:
         """Place the mouse home and cheese inside the maze."""
 
         floor_positions = self.get_floor_positions(
@@ -251,23 +288,243 @@ class MazeGenerator:
         home_row, home_column = home_position
         cheese_row, cheese_column = cheese_position
 
-        grid[home_row][home_column] = TileType.HOME
-        grid[cheese_row][cheese_column] = TileType.CHEESE
+        grid[home_row][home_column] = (
+            TileType.HOME
+        )
+
+        grid[cheese_row][cheese_column] = (
+            TileType.CHEESE
+        )
+
+        return cheese_position
+
+    def is_inside_grid(
+        self,
+        position: Position,
+    ) -> bool:
+        """Check whether a position is inside the maze boundaries."""
+
+        row, column = position
+
+        return (
+            0 <= row < self.rows
+            and 0 <= column < self.columns
+        )
+
+    def is_walkable(
+        self,
+        grid: list[list[TileType]],
+        position: Position,
+    ) -> bool:
+        """Check whether a grid position can be visited."""
+
+        if not self.is_inside_grid(
+            position
+        ):
+            return False
+
+        row, column = position
+
+        return (
+            grid[row][column]
+            != TileType.WALL
+        )
+
+    def get_walkable_neighbors(
+        self,
+        grid: list[list[TileType]],
+        position: Position,
+    ) -> list[Position]:
+        """Return the walkable neighbors of one position."""
+
+        row, column = position
+
+        possible_neighbors = [
+            (row - 1, column),
+            (row + 1, column),
+            (row, column - 1),
+            (row, column + 1),
+        ]
+
+        walkable_neighbors = []
+
+        for neighbor in possible_neighbors:
+            if self.is_walkable(
+                grid,
+                neighbor,
+            ):
+                walkable_neighbors.append(
+                    neighbor
+                )
+
+        return walkable_neighbors
+
+    def find_shortest_path(
+        self,
+        grid: list[list[TileType]],
+        start: Position,
+        destination: Position,
+    ) -> list[Position]:
+        """Find the shortest path using breadth-first search."""
+
+        queue = deque(
+            [start]
+        )
+
+        previous_positions: dict[
+            Position,
+            Optional[Position],
+        ] = {
+            start: None,
+        }
+
+        while queue:
+            current = queue.popleft()
+
+            if current == destination:
+                break
+
+            neighbors = self.get_walkable_neighbors(
+                grid,
+                current,
+            )
+
+            for neighbor in neighbors:
+                if neighbor in previous_positions:
+                    continue
+
+                previous_positions[neighbor] = (
+                    current
+                )
+
+                queue.append(
+                    neighbor
+                )
+
+        if destination not in previous_positions:
+            raise RuntimeError(
+                "No path exists between home and cheese."
+            )
+
+        path = []
+        current_position: Optional[Position] = (
+            destination
+        )
+
+        while current_position is not None:
+            path.append(
+                current_position
+            )
+
+            current_position = previous_positions[
+                current_position
+            ]
+
+        path.reverse()
+
+        return path
+
+    def get_available_trap_positions(
+        self,
+        grid: list[list[TileType]],
+        protected_path: list[Position],
+    ) -> list[Position]:
+        """Return floor cells that can safely contain traps."""
+
+        protected_positions = set(
+            protected_path
+        )
+
+        available_positions = []
+
+        for row in range(self.rows):
+            for column in range(self.columns):
+                position = (
+                    row,
+                    column,
+                )
+
+                if position in protected_positions:
+                    continue
+
+                if (
+                    grid[row][column]
+                    != TileType.FLOOR
+                ):
+                    continue
+
+                available_positions.append(
+                    position
+                )
+
+        return available_positions
+
+    def place_traps(
+        self,
+        grid: list[list[TileType]],
+        home_position: Position,
+        cheese_position: Position,
+    ) -> None:
+        """Place traps outside the shortest safe path."""
+
+        if self.trap_count == 0:
+            return
+
+        shortest_path = self.find_shortest_path(
+            grid,
+            home_position,
+            cheese_position,
+        )
+
+        available_positions = (
+            self.get_available_trap_positions(
+                grid,
+                shortest_path,
+            )
+        )
+
+        if (
+            len(available_positions)
+            < self.trap_count
+        ):
+            raise ValueError(
+                "The maze does not contain enough valid "
+                "positions for the requested traps."
+            )
+
+        trap_positions = self.random.sample(
+            available_positions,
+            self.trap_count,
+        )
+
+        for row, column in trap_positions:
+            grid[row][column] = (
+                TileType.TRAP
+            )
 
     def generate_maze(self) -> LevelManager:
         """Generate and return one complete maze level."""
 
         grid = self.generate_empty_grid()
-        start_position = self.choose_start_cell()
+
+        home_position = self.choose_start_cell()
 
         self.generate_paths(
             grid,
-            start_position,
+            home_position,
         )
 
-        self.place_objectives(
+        cheese_position = self.place_objectives(
             grid,
-            start_position,
+            home_position,
         )
 
-        return LevelManager(grid)
+        self.place_traps(
+            grid,
+            home_position,
+            cheese_position,
+        )
+
+        return LevelManager(
+            grid
+        )
