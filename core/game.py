@@ -487,6 +487,7 @@ class Game:
                 .has_cheese
             ),
             active_traps=active_traps,
+            difficulty=self.target_difficulty,
             status=self.get_game_status(
                 current_time
             ),

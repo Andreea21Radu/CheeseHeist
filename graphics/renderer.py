@@ -501,6 +501,7 @@ class Renderer:
         moves: int,
         has_cheese: bool,
         active_traps: int,
+        difficulty: str,
         status: str,
         stun_seconds: int,
         has_won: bool,
@@ -614,6 +615,11 @@ class Renderer:
                 settings.TEXT_COLOR,
             ),
             (
+                "Difficulty",
+                difficulty.upper(),
+                settings.ACCENT_COLOR,
+            ),
+            (
                 "Best path",
                 f"{shortest_path_length} moves",
                 settings.TEXT_COLOR,
@@ -645,7 +651,7 @@ class Renderer:
             ),
         ]
 
-        item_spacing = 50
+        item_spacing = 44
         start_y = panel_y + 61
 
         for index, (
