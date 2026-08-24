@@ -4,6 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+import json
+from pathlib import Path
+
+from config import settings
+from generation.maze_generator import MazeGenerator
+
 from difficulty.difficulty_metrics import (
     calculate_difficulty_score,
     calculate_wall_density,
@@ -420,3 +426,79 @@ def create_next_generation(
         new_population.append(child)
 
     return new_population
+
+
+def evolve_level(
+    initial_level: LevelManager,
+    target_difficulty: str,
+    show_progress=None,
+):
+    """Evolueaza nivelul spre dificultatea aleasa."""
+
+    population = [LevelIndividual(copy_level(initial_level))]
+
+    while len(population) < settings.GA_POPULATION_SIZE:
+        generator = MazeGenerator(initial_level.rows, initial_level.columns)
+        level = generator.generate_maze()
+        population.append(LevelIndividual(level))
+
+    for individual in population:
+        individual.evaluate(target_difficulty)
+
+    initial = population[0].copy()
+    best = max(population, key=lambda item: item.fitness).copy()
+    history = [best.fitness]
+
+    for generation in range(1, settings.GA_GENERATIONS + 1):
+        population = create_next_generation(
+            population,
+            target_difficulty,
+        )
+
+        generation_best = max(
+            population,
+            key=lambda item: item.fitness,
+        )
+
+        if generation_best.fitness > best.fitness:
+            best = generation_best.copy()
+
+        history.append(best.fitness)
+
+        if show_progress:
+            show_progress(generation, best)
+
+    return initial, best, history
+
+
+def save_evolution_result(initial, best, history) -> None:
+    """Salveaza nivelul final si rezultatele evolutiei."""
+
+    project_folder = Path(__file__).resolve().parents[1]
+    results_folder = project_folder / "data" / "results"
+    levels_folder = project_folder / "data" / "generated_levels"
+
+    results_folder.mkdir(parents=True, exist_ok=True)
+    levels_folder.mkdir(parents=True, exist_ok=True)
+
+    level_data = [
+        [tile.name for tile in row]
+        for row in best.level.grid
+    ]
+
+    (levels_folder / "evolved_level.json").write_text(
+        json.dumps(level_data, indent=4),
+        encoding="utf-8",
+    )
+
+    result_data = {
+        "initial_difficulty": initial.difficulty_score,
+        "final_difficulty": best.difficulty_score,
+        "best_fitness": best.fitness,
+        "fitness_history": history,
+    }
+
+    (results_folder / "evolution_result.json").write_text(
+        json.dumps(result_data, indent=4),
+        encoding="utf-8",
+    )

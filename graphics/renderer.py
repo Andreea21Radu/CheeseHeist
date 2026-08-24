@@ -356,7 +356,10 @@ class Renderer:
         )
 
         controls_surface = self.small_font.render(
-            "WASD / Arrows: move    R: new maze    B: shortest path",
+            (
+                "WASD / Arrows: move    R: new maze    "
+                "B: shortest path    E: evolve    M: menu"
+            ),
             True,
             settings.SECONDARY_TEXT_COLOR,
         )

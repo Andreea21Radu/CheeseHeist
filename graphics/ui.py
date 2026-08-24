@@ -131,3 +131,29 @@ class DifficultyMenu:
                     center=rectangle.center
                 ),
             )
+
+
+def draw_evolution_progress(
+    screen: pygame.Surface,
+    initial_score: float,
+    generation: int,
+    best,
+) -> None:
+    """Afiseaza progresul algoritmului genetic."""
+
+    screen.fill(settings.BACKGROUND_COLOR)
+    font = pygame.font.Font(None, 32)
+    current_score = best.difficulty_score or 0.0
+
+    lines = [
+        f"Dificultate initiala: {initial_score:.2f}",
+        f"Generatia: {generation}/{settings.GA_GENERATIONS}",
+        f"Cel mai bun fitness: {best.fitness:.2f}",
+        f"Dificultate curenta: {current_score:.2f}",
+    ]
+
+    for index, line in enumerate(lines):
+        text = font.render(line, True, settings.TEXT_COLOR)
+        screen.blit(text, (100, 150 + index * 45))
+
+    pygame.display.flip()

@@ -5,12 +5,15 @@ import pygame
 from config import settings
 from core.game_logic import GameLogic
 from core.game_state import GameState
+from difficulty.difficulty_metrics import calculate_difficulty_score
+from difficulty.genetic_algorithm import evolve_level, save_evolution_result
 from entities.entity_manager import EntityManager
 from generation.level_manager import LevelManager
 from generation.level_validator import LevelValidator
 from generation.maze_generator import MazeGenerator
 from graphics.asset_manager import AssetManager
 from graphics.renderer import Renderer
+from graphics.ui import DifficultyMenu, draw_evolution_progress
 
 
 class Game:
@@ -18,7 +21,7 @@ class Game:
 
     def __init__(self) -> None:
         pygame.init()
-
+        self.target_difficulty = settings.DEFAULT_DIFFICULTY
         self.screen = pygame.display.set_mode(
             (
                 settings.WINDOW_WIDTH,
@@ -82,6 +85,9 @@ class Game:
         self.renderer = Renderer(
             self.screen,
             self.assets,
+        )
+        self.difficulty_menu = DifficultyMenu(
+            self.screen
         )
 
         self.print_level_information()
@@ -186,6 +192,33 @@ class Game:
             len(self.entity_manager.traps),
         )
 
+    def evolve_current_level(self) -> None:
+        """Evolueaza nivelul curent spre dificultatea aleasa."""
+
+        initial_score = calculate_difficulty_score(self.level) or 0
+
+        def show_progress(generation, best):
+            draw_evolution_progress(
+                self.screen,
+                initial_score,
+                generation,
+                best,
+            )
+            pygame.event.pump()
+
+        initial, best, history = evolve_level(
+            self.level,
+            self.target_difficulty,
+            show_progress,
+        )
+
+        save_evolution_result(initial, best, history)
+        self.level = best.level
+        self.update_level_components()
+        self.print_level_information()
+        print("Dificultate initiala:", initial.difficulty_score)
+        print("Dificultate finala:", best.difficulty_score)
+
     def handle_events(
         self,
     ) -> None:
@@ -201,25 +234,29 @@ class Game:
             if event.key == pygame.K_ESCAPE:
                 self.is_running = False
 
-            elif (
-                event.key == pygame.K_SPACE
-                and not self.has_started
-            ):
-                self.has_started = True
+            elif not self.has_started:
+                selected_difficulty = (
+                    self.difficulty_menu.handle_event(event)
+                )
 
-            elif (
-                event.key == pygame.K_r
-                and self.has_started
-            ):
+                if selected_difficulty is not None:
+                    self.target_difficulty = selected_difficulty
+                    self.has_started = True
+
+            elif event.key == pygame.K_m:
+                self.has_started = False
+                self.entity_manager.mouse.stop_moving()
+
+            elif event.key == pygame.K_r:
                 self.generate_new_level()
 
-            elif (
-                event.key == pygame.K_b
-                and self.has_started
-            ):
+            elif event.key == pygame.K_b:
                 self.show_bfs_path = (
                     not self.show_bfs_path
                 )
+
+            elif event.key == pygame.K_e:
+                self.evolve_current_level()
 
     def get_pressed_movement(
         self,
@@ -478,7 +515,7 @@ class Game:
         """Draw the current frame."""
 
         if not self.has_started:
-            self.renderer.draw_start_screen()
+            self.difficulty_menu.draw()
 
         else:
             current_time = pygame.time.get_ticks()
