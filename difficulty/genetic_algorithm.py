@@ -1,5 +1,4 @@
 """Reprezentarea individului si calcularea fitness-ului."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -154,3 +153,270 @@ def calculate_fitness(
     return individual.evaluate(
         target_difficulty
     )
+
+import random
+
+
+def clean_grid(
+    level: LevelManager,
+) -> list[list[TileType]]:
+    """Elimina elementele speciale din grila copiata."""
+
+    special_tiles = {
+        TileType.HOME,
+        TileType.CHEESE,
+        TileType.TRAP,
+    }
+
+    return [
+        [
+            TileType.FLOOR
+            if tile in special_tiles
+            else tile
+            for tile in row
+        ]
+        for row in level.grid
+    ]
+
+
+def regenerate_special_tiles(
+    grid: list[list[TileType]],
+    trap_count: int,
+    rng: random.Random,
+) -> Optional[LevelManager]:
+    """Adauga din nou casa, branza si capcanele."""
+
+    floor_positions = [
+        (row, col)
+        for row in range(len(grid))
+        for col in range(len(grid[0]))
+        if grid[row][col] == TileType.FLOOR
+    ]
+
+    if len(floor_positions) < 2:
+        return None
+
+    for _ in range(30):
+        new_grid = [
+            row.copy()
+            for row in grid
+        ]
+
+        home, cheese = rng.sample(
+            floor_positions,
+            2,
+        )
+
+        home_row, home_col = home
+        cheese_row, cheese_col = cheese
+
+        new_grid[home_row][home_col] = TileType.HOME
+        new_grid[cheese_row][cheese_col] = TileType.CHEESE
+
+        available_traps = [
+            position
+            for position in floor_positions
+            if position not in {
+                home,
+                cheese,
+            }
+        ]
+
+        traps = rng.sample(
+            available_traps,
+            min(trap_count, len(available_traps)),
+        )
+
+        for trap_row, trap_col in traps:
+            new_grid[trap_row][trap_col] = TileType.TRAP
+
+        level = LevelManager(new_grid)
+
+        if is_valid_level(level):
+            return level
+
+    return None
+
+
+def select_parent(
+    population: list[LevelIndividual],
+    tournament_size: int = 3,
+    rng: Optional[random.Random] = None,
+) -> LevelIndividual:
+    """Selecteaza un parinte prin turneu."""
+
+    rng = rng or random.Random()
+
+    candidates = rng.sample(
+        population,
+        min(tournament_size, len(population)),
+    )
+
+    return max(
+        candidates,
+        key=lambda individual: individual.fitness,
+    )
+
+
+def crossover_levels(
+    first_parent: LevelIndividual,
+    second_parent: LevelIndividual,
+    rng: Optional[random.Random] = None,
+) -> LevelIndividual:
+    """Combina jumatatile a doua niveluri."""
+
+    rng = rng or random.Random()
+
+    first_grid = clean_grid(first_parent.level)
+    second_grid = clean_grid(second_parent.level)
+
+    cut = rng.randint(
+        1,
+        first_parent.level.rows - 2,
+    )
+
+    child_grid = (
+        first_grid[:cut]
+        + second_grid[cut:]
+    )
+
+    first_traps = len(
+        first_parent.level.find_all_tiles(
+            TileType.TRAP
+        )
+    )
+
+    second_traps = len(
+        second_parent.level.find_all_tiles(
+            TileType.TRAP
+        )
+    )
+
+    trap_count = round(
+        (first_traps + second_traps) / 2
+    )
+
+    child_level = regenerate_special_tiles(
+        child_grid,
+        trap_count,
+        rng,
+    )
+
+    if child_level is None:
+        if first_parent.fitness >= second_parent.fitness:
+            return first_parent.copy()
+
+        return second_parent.copy()
+
+    return LevelIndividual(child_level)
+
+
+def mutate_level(
+    individual: LevelIndividual,
+    mutation_rate: float = 0.08,
+    rng: Optional[random.Random] = None,
+) -> LevelIndividual:
+    """Modifica o celula si numarul capcanelor."""
+
+    rng = rng or random.Random()
+
+    if rng.random() >= mutation_rate:
+        return individual.copy()
+
+    level = individual.level
+    grid = clean_grid(level)
+
+    row = rng.randint(1, level.rows - 2)
+    col = rng.randint(1, level.columns - 2)
+
+    if grid[row][col] == TileType.WALL:
+        grid[row][col] = TileType.FLOOR
+    else:
+        grid[row][col] = TileType.WALL
+
+    trap_count = len(
+        level.find_all_tiles(TileType.TRAP)
+    )
+
+    trap_count = max(
+        0,
+        trap_count + rng.choice((-1, 0, 1)),
+    )
+
+    mutated_level = regenerate_special_tiles(
+        grid,
+        trap_count,
+        rng,
+    )
+
+    if mutated_level is None:
+        return individual.copy()
+
+    return LevelIndividual(mutated_level)
+
+
+def preserve_elite(
+    population: list[LevelIndividual],
+    elite_count: int = 2,
+) -> list[LevelIndividual]:
+    """Pastreaza cei mai buni indivizi."""
+
+    ordered = sorted(
+        population,
+        key=lambda individual: individual.fitness,
+        reverse=True,
+    )
+
+    return [
+        individual.copy()
+        for individual in ordered[:elite_count]
+    ]
+
+
+def create_next_generation(
+    population: list[LevelIndividual],
+    target_difficulty: str,
+    mutation_rate: float = 0.08,
+    elite_count: int = 2,
+    rng: Optional[random.Random] = None,
+) -> list[LevelIndividual]:
+    """Creeaza urmatoarea generatie."""
+
+    rng = rng or random.Random()
+
+    for individual in population:
+        individual.evaluate(target_difficulty)
+
+    new_population = preserve_elite(
+        population,
+        elite_count,
+    )
+
+    while len(new_population) < len(population):
+        first_parent = select_parent(
+            population,
+            rng=rng,
+        )
+
+        second_parent = select_parent(
+            population,
+            rng=rng,
+        )
+
+        child = crossover_levels(
+            first_parent,
+            second_parent,
+            rng,
+        )
+
+        child = mutate_level(
+            child,
+            mutation_rate,
+            rng,
+        )
+
+        child.evaluate(target_difficulty)
+
+        new_population.append(child)
+
+    return new_population
