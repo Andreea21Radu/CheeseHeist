@@ -313,13 +313,34 @@ class Renderer:
     ) -> None:
         """Draw the shortest BFS path."""
 
+        self.draw_path(
+            path,
+            settings.DEBUG_PATH_COLOR,
+            max(3, settings.TILE_SIZE // 7),
+        )
+
+    def draw_agent_path(
+        self,
+        path: list[tuple[int, int]],
+    ) -> None:
+        """Draw the path followed by the trained agent."""
+
+        self.draw_path(
+            path,
+            settings.AGENT_PATH_COLOR,
+            max(2, settings.TILE_SIZE // 10),
+        )
+
+    def draw_path(
+        self,
+        path: list[tuple[int, int]],
+        color: tuple[int, int, int],
+        circle_radius: int,
+    ) -> None:
+        """Draw a path using circles inside its cells."""
+
         if len(path) <= 1:
             return
-
-        circle_radius = max(
-            3,
-            settings.TILE_SIZE // 7,
-        )
 
         for row, column in path[1:]:
             center_x = (
@@ -336,7 +357,7 @@ class Renderer:
 
             pygame.draw.circle(
                 self.screen,
-                settings.DEBUG_PATH_COLOR,
+                color,
                 (
                     center_x,
                     center_y,
@@ -358,7 +379,7 @@ class Renderer:
         controls_surface = self.small_font.render(
             (
                 "WASD / Arrows: move    R: new maze    "
-                "B: shortest path    E: evolve    M: menu"
+                "B: paths    E: evolve    M: menu"
             ),
             True,
             settings.SECONDARY_TEXT_COLOR,
@@ -501,6 +522,7 @@ class Renderer:
         moves: int,
         has_cheese: bool,
         active_traps: int,
+        mode: str,
         difficulty: str,
         status: str,
         stun_seconds: int,
@@ -615,6 +637,11 @@ class Renderer:
                 settings.TEXT_COLOR,
             ),
             (
+                "Mode",
+                mode,
+                settings.TEXT_COLOR,
+            ),
+            (
                 "Difficulty",
                 difficulty.upper(),
                 settings.ACCENT_COLOR,
@@ -651,7 +678,7 @@ class Renderer:
             ),
         ]
 
-        item_spacing = 44
+        item_spacing = 39
         start_y = panel_y + 61
 
         for index, (

@@ -15,6 +15,11 @@ The player controls a mouse, searches for the cheese, avoids traps, and must ret
 - Start screen and victory overlay
 - Move counter and route efficiency score
 - Debug visualization for the shortest BFS path
+- Easy, medium, and hard difficulty selection
+- Genetic algorithm with selection, crossover, mutation, and elitism
+- Level evolution toward a selected difficulty
+- Q-learning agent with training statistics and saved Q-tables
+- BFS and trained-agent path comparison
 - Automated tests for the main gameplay rules
 
 ## Gameplay
@@ -38,8 +43,17 @@ efficiency = (2 × shortest path) / player moves × 100
 | `WASD` or Arrow Keys | Move the mouse |
 | `B` | Show or hide the shortest BFS path |
 | `R` | Generate a new maze |
-| `Space` | Start the game |
+| `E` | Evolve the current level |
+| `M` | Return to the menu |
+| `Enter` or `Space` | Confirm the menu selection |
 | `Esc` | Close the game |
+
+## Game Modes
+
+- **Human Play** generates a level for the selected difficulty.
+- **Watch Trained Agent** trains and displays a Q-learning agent.
+- **Generate Random Level** creates a playable procedural level.
+- **Evolve Level** evolves a level toward easy, medium, or hard.
 
 ## Project Structure
 
@@ -52,6 +66,7 @@ graphics/     Asset loading and rendering
 difficulty/   Adaptive difficulty components
 learning/     Learning and AI components
 tests/        Automated tests
+data/         Generated levels, results, and saved Q-tables
 main.py       Application entry point
 ```
 
@@ -110,9 +125,19 @@ Selected internal walls are removed after the base maze is generated. This creat
 
 BFS verifies that the level is playable and calculates the shortest route between the mouse home and the cheese.
 
+### Genetic Algorithm
+
+Each level is evaluated as an individual. Tournament selection, crossover, mutation, and elitism evolve the population toward the selected difficulty.
+
+### Q-Learning
+
+The state is `(row, column, has_cheese)`. The agent learns from movement, wall, trap, cheese, and completion rewards using an epsilon-greedy policy.
+
+Training results compare the untrained agent, trained agent, and optimal BFS route. Models are saved in `data/saved_models/`, while statistics are saved in `data/results/`.
+
 ## Current Status
 
-The core game is fully playable. The next development stage focuses on adaptive difficulty using genetic algorithms and Q-learning.
+The game includes procedural generation, adaptive difficulty, level evolution, Q-learning training, and a visual trained-agent mode.
 
 ## Authors
 

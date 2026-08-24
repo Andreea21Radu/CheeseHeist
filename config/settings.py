@@ -1,5 +1,7 @@
 """Global settings used by the Cheese Heist game."""
 
+from pathlib import Path
+
 # -------------------------------------------------
 # window
 # -------------------------------------------------
@@ -62,6 +64,16 @@ Q_DISCOUNT_FACTOR = 0.95
 Q_INITIAL_EPSILON = 1.0
 Q_MIN_EPSILON = 0.05
 Q_EPSILON_DECAY = 0.995
+AGENT_MOVE_DELAY = 100
+
+# -------------------------------------------------
+# generated files
+# -------------------------------------------------
+
+PROJECT_DIRECTORY = Path(__file__).resolve().parent.parent
+DATA_DIRECTORY = PROJECT_DIRECTORY / "data"
+SAVED_MODELS_DIRECTORY = DATA_DIRECTORY / "saved_models"
+RESULTS_DIRECTORY = DATA_DIRECTORY / "results"
 
 # -------------------------------------------------
 # layout
@@ -150,6 +162,12 @@ DEBUG_PATH_COLOR = (
     80,
     180,
     255,
+)
+
+AGENT_PATH_COLOR = (
+    120,
+    220,
+    130,
 )
 
 # -------------------------------------------------

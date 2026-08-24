@@ -1,6 +1,8 @@
 """Antrenarea agentului Q-learning."""
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from config import settings
 from learning.environment import QLearningEnvironment
@@ -68,3 +70,41 @@ def train_agent(
             progress_callback(episode, stats)
 
     return stats
+
+
+def get_agent_path(
+    environment: QLearningEnvironment,
+    agent: QLearningAgent,
+) -> tuple[list[tuple[int, int]], bool]:
+    """Ruleaza politica invatata si returneaza traseul ei."""
+
+    state = environment.reset()
+    path = [environment.mouse_position]
+
+    while not environment.done:
+        action = agent.choose_action(state, training=False)
+        state, _, _ = environment.step(action)
+        path.append(environment.mouse_position)
+
+    return path, environment.success
+
+
+def save_training_results(
+    stats: TrainingStats,
+    file_path: str | Path,
+    comparison: dict,
+) -> None:
+    """Salveaza statisticile si comparatia cu BFS."""
+
+    path = Path(file_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "rewards": stats.rewards,
+        "steps": stats.steps,
+        "success_rate": stats.success_rate,
+        "comparison": comparison,
+    }
+    path.write_text(
+        json.dumps(data, indent=4),
+        encoding="utf-8",
+    )

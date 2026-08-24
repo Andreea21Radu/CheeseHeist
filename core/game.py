@@ -1,11 +1,16 @@
 """Main game loop and application lifecycle."""
 
+from typing import Optional
+
 import pygame
 
 from config import settings
 from core.game_logic import GameLogic
 from core.game_state import GameState
-from difficulty.difficulty_metrics import calculate_difficulty_score
+from difficulty.difficulty_metrics import (
+    calculate_difficulty_score,
+    get_level_difficulty,
+)
 from difficulty.genetic_algorithm import evolve_level, save_evolution_result
 from entities.entity_manager import EntityManager
 from generation.level_manager import LevelManager
@@ -13,7 +18,24 @@ from generation.level_validator import LevelValidator
 from generation.maze_generator import MazeGenerator
 from graphics.asset_manager import AssetManager
 from graphics.renderer import Renderer
-from graphics.ui import DifficultyMenu, draw_evolution_progress
+from graphics.ui import (
+    AGENT_MODE,
+    EVOLVE_MODE,
+    HUMAN_MODE,
+    MODE_LABELS,
+    RANDOM_MODE,
+    GameMenu,
+    draw_evolution_progress,
+    draw_training_progress,
+)
+from learning.environment import QLearningEnvironment, State
+from learning.q_learning_agent import QLearningAgent
+from learning.training import (
+    TrainingStats,
+    get_agent_path,
+    save_training_results,
+    train_agent,
+)
 
 
 class Game:
@@ -36,14 +58,25 @@ class Game:
         self.clock = pygame.time.Clock()
         self.is_running = True
         self.has_started = False
+        self.current_mode = HUMAN_MODE
 
         self.last_move_time = 0
         self.move_delay = settings.MOVE_DELAY
+        self.last_agent_move_time = 0
 
         self.cheese_message_until = 0
         self.previous_cheese_state = False
 
         self.assets = AssetManager()
+
+        self.agent: Optional[QLearningAgent] = None
+        self.agent_environment: Optional[
+            QLearningEnvironment
+        ] = None
+        self.agent_state: Optional[State] = None
+        self.training_stats: Optional[TrainingStats] = None
+        self.agent_path: list[tuple[int, int]] = []
+        self.agent_success = False
 
         self.maze_generator = MazeGenerator(
             rows=settings.GRID_ROWS,
@@ -52,41 +85,13 @@ class Game:
         )
 
         self.level = self.generate_valid_level()
-
-        self.level_validator = LevelValidator(
-            self.level
-        )
-
-        self.bfs_path = (
-            self.level_validator
-            .get_home_to_cheese_path()
-        )
-
-        self.shortest_path_length = (
-            self.level_validator
-            .get_shortest_path_length()
-        )
-
-        self.entity_manager = (
-            EntityManager.from_level(
-                self.level
-            )
-        )
-
-        self.game_logic = GameLogic(
-            self.level,
-            self.entity_manager,
-        )
-
-        self.show_bfs_path = (
-            settings.SHOW_BFS_PATH_BY_DEFAULT
-        )
+        self.update_level_components()
 
         self.renderer = Renderer(
             self.screen,
             self.assets,
         )
-        self.difficulty_menu = DifficultyMenu(
+        self.game_menu = GameMenu(
             self.screen
         )
 
@@ -123,6 +128,52 @@ class Game:
             "Could not generate a playable maze."
         )
 
+    def generate_level_for_difficulty(
+        self,
+        difficulty: str,
+    ) -> LevelManager:
+        """Genereaza un nivel din categoria aleasa."""
+
+        options = {
+            "easy": (1, 0.28),
+            "medium": (5, 0.12),
+            "hard": (8, 0.03),
+        }
+        target_scores = {
+            "easy": 27.0,
+            "medium": 30.5,
+            "hard": 34.0,
+        }
+        trap_count, passage_ratio = options[difficulty]
+        best_level = None
+        best_difference = float("inf")
+
+        for _ in range(100):
+            generator = MazeGenerator(
+                rows=settings.GRID_ROWS,
+                columns=settings.GRID_COLUMNS,
+                trap_count=trap_count,
+                extra_passage_ratio=passage_ratio,
+            )
+            level = generator.generate_maze()
+            score = calculate_difficulty_score(level)
+
+            if score is None:
+                continue
+
+            difference = abs(score - target_scores[difficulty])
+            if difference < best_difference:
+                best_level = level
+                best_difference = difference
+
+            if get_level_difficulty(level) == difficulty:
+                return level
+
+        if best_level is None:
+            raise RuntimeError("Nu s-a putut genera nivelul cerut.")
+
+        return best_level
+
     def update_level_components(
         self,
     ) -> None:
@@ -137,9 +188,20 @@ class Game:
             .get_home_to_cheese_path()
         )
 
+        return_path = (
+            self.level_validator
+            .get_cheese_to_home_path()
+        )
+        self.bfs_round_trip = (
+            self.bfs_path + return_path[1:]
+            if return_path
+            else self.bfs_path
+        )
+
         self.shortest_path_length = (
             self.level_validator
             .get_shortest_path_length()
+            or 0
         )
 
         self.entity_manager = (
@@ -154,23 +216,137 @@ class Game:
         )
 
         self.last_move_time = 0
+        self.last_agent_move_time = 0
         self.cheese_message_until = 0
         self.previous_cheese_state = False
+        self.show_bfs_path = settings.SHOW_BFS_PATH_BY_DEFAULT
 
-    def generate_new_level(
+    def clear_agent(self) -> None:
+        """Sterge datele agentului de la rularea anterioara."""
+
+        self.agent = None
+        self.agent_environment = None
+        self.agent_state = None
+        self.training_stats = None
+        self.agent_path = []
+        self.agent_success = False
+
+    def show_training_progress(
         self,
+        episode: int,
+        stats: TrainingStats,
     ) -> None:
-        """Generate and validate a new procedural maze."""
+        """Actualizeaza ecranul in timpul antrenarii."""
 
-        self.maze_generator = MazeGenerator(
-            rows=settings.GRID_ROWS,
-            columns=settings.GRID_COLUMNS,
+        if (
+            episode % 50 != 0
+            and episode != settings.Q_LEARNING_EPISODES
+        ):
+            return
+
+        draw_training_progress(
+            self.screen,
+            episode,
+            stats,
+        )
+        pygame.event.pump()
+
+    def setup_agent(self) -> None:
+        """Antreneaza si pregateste agentul pentru afisare."""
+
+        environment = QLearningEnvironment(self.level)
+        untrained_agent = QLearningAgent(seed=0)
+        untrained_path, untrained_success = get_agent_path(
+            environment,
+            untrained_agent,
         )
 
-        self.level = self.generate_valid_level()
+        agent = QLearningAgent(seed=0)
+        stats = train_agent(
+            environment,
+            agent,
+            progress_callback=self.show_training_progress,
+        )
+        trained_path, trained_success = get_agent_path(
+            environment,
+            agent,
+        )
 
-        self.update_level_components()
+        model_path = settings.SAVED_MODELS_DIRECTORY / (
+            f"q_table_{self.target_difficulty}.json"
+        )
+        result_path = settings.RESULTS_DIRECTORY / (
+            f"q_learning_{self.target_difficulty}.json"
+        )
+        agent.save_q_table(model_path)
+
+        comparison = {
+            "difficulty": self.target_difficulty,
+            "untrained_success": untrained_success,
+            "untrained_steps": len(untrained_path) - 1,
+            "trained_success": trained_success,
+            "trained_steps": len(trained_path) - 1,
+            "bfs_steps": len(self.bfs_round_trip) - 1,
+        }
+        save_training_results(stats, result_path, comparison)
+
+        self.agent = agent
+        self.agent_environment = environment
+        self.agent_state = environment.reset()
+        self.training_stats = stats
+        self.agent_path = [environment.mouse_position]
+        self.agent_success = trained_success
+
+        print("Comparatie Q-learning:", comparison)
+        print("Rata de succes:", f"{stats.success_rate:.1f}%")
+
+    def start_selected_mode(
+        self,
+        mode: str,
+        difficulty: str,
+    ) -> None:
+        """Pregateste modul si dificultatea alese in meniu."""
+
+        self.current_mode = mode
+        self.target_difficulty = difficulty
+        self.clear_agent()
+
+        if mode == RANDOM_MODE:
+            self.maze_generator = MazeGenerator(
+                rows=settings.GRID_ROWS,
+                columns=settings.GRID_COLUMNS,
+            )
+            self.level = self.generate_valid_level()
+            self.update_level_components()
+
+        elif mode == EVOLVE_MODE:
+            self.maze_generator = MazeGenerator(
+                rows=settings.GRID_ROWS,
+                columns=settings.GRID_COLUMNS,
+            )
+            self.level = self.generate_valid_level()
+            self.update_level_components()
+            self.evolve_current_level()
+
+        else:
+            self.level = self.generate_level_for_difficulty(
+                difficulty
+            )
+            self.update_level_components()
+
+        if mode == AGENT_MODE:
+            self.setup_agent()
+
+        self.has_started = True
         self.print_level_information()
+
+    def generate_new_level(self) -> None:
+        """Reporneste modul curent pe un nivel nou."""
+
+        self.start_selected_mode(
+            self.current_mode,
+            self.target_difficulty,
+        )
 
     def print_level_information(
         self,
@@ -191,10 +367,18 @@ class Game:
             "Number of traps:",
             len(self.entity_manager.traps),
         )
+        print("Mode:", MODE_LABELS[self.current_mode])
+        print(
+            "Difficulty:",
+            get_level_difficulty(self.level),
+            calculate_difficulty_score(self.level),
+        )
 
     def evolve_current_level(self) -> None:
         """Evolueaza nivelul curent spre dificultatea aleasa."""
 
+        self.current_mode = EVOLVE_MODE
+        self.clear_agent()
         initial_score = calculate_difficulty_score(self.level) or 0
 
         def show_progress(generation, best):
@@ -235,13 +419,10 @@ class Game:
                 self.is_running = False
 
             elif not self.has_started:
-                selected_difficulty = (
-                    self.difficulty_menu.handle_event(event)
-                )
+                selection = self.game_menu.handle_event(event)
 
-                if selected_difficulty is not None:
-                    self.target_difficulty = selected_difficulty
-                    self.has_started = True
+                if selection is not None:
+                    self.start_selected_mode(*selection)
 
             elif event.key == pygame.K_m:
                 self.has_started = False
@@ -297,6 +478,9 @@ class Game:
     ) -> None:
         """Update whether the mouse should use walking frames."""
 
+        if self.current_mode == AGENT_MODE:
+            return
+
         mouse = self.entity_manager.mouse
         movement = self.get_pressed_movement()
 
@@ -330,6 +514,9 @@ class Game:
         if not self.has_started:
             return
 
+        if self.current_mode == AGENT_MODE:
+            return
+
         if not self.game_logic.is_playing():
             return
 
@@ -358,6 +545,71 @@ class Game:
         )
 
         self.last_move_time = current_time
+
+    def update_agent(self, current_time: int) -> None:
+        """Executa urmatoarea actiune a agentului antrenat."""
+
+        if (
+            self.agent is None
+            or self.agent_environment is None
+            or self.agent_state is None
+        ):
+            return
+
+        mouse = self.entity_manager.mouse
+
+        if self.agent_environment.done:
+            mouse.stop_moving()
+            return
+
+        elapsed = current_time - self.last_agent_move_time
+        if elapsed < settings.AGENT_MOVE_DELAY:
+            if elapsed > settings.AGENT_MOVE_DELAY // 2:
+                mouse.stop_moving()
+            return
+
+        action = self.agent.choose_action(
+            self.agent_state,
+            training=False,
+        )
+        row_change, column_change = (
+            self.agent_environment.ACTIONS[action]
+        )
+        old_position = self.agent_environment.mouse_position
+        had_cheese = self.agent_environment.has_cheese
+        next_state, _, done = self.agent_environment.step(action)
+        new_position = self.agent_environment.mouse_position
+
+        mouse.set_direction_from_movement(
+            row_change,
+            column_change,
+        )
+
+        if new_position != old_position:
+            mouse.set_position(new_position)
+            mouse.register_move()
+            mouse.start_moving()
+            self.agent_path.append(new_position)
+
+            for trap in self.entity_manager.traps:
+                if trap.position == new_position and trap.is_active:
+                    trap.trigger()
+                    break
+        else:
+            mouse.stop_moving()
+
+        if self.agent_environment.has_cheese and not had_cheese:
+            self.entity_manager.cheese.collect()
+            mouse.collect_cheese()
+
+        if done:
+            self.agent_success = self.agent_environment.success
+
+            if self.agent_success:
+                self.game_logic.state = GameState.WON
+
+        self.agent_state = next_state
+        self.last_agent_move_time = current_time
 
     def update_cheese_message(
         self,
@@ -390,17 +642,12 @@ class Game:
 
         current_time = pygame.time.get_ticks()
 
-        self.game_logic.update(
-            current_time
-        )
-
-        self.update_mouse_animation_state(
-            current_time
-        )
-
-        self.handle_continuous_movement(
-            current_time
-        )
+        if self.current_mode == AGENT_MODE:
+            self.update_agent(current_time)
+        else:
+            self.game_logic.update(current_time)
+            self.update_mouse_animation_state(current_time)
+            self.handle_continuous_movement(current_time)
 
         self.update_cheese_message(
             current_time
@@ -414,6 +661,13 @@ class Game:
 
         if self.game_logic.state == GameState.WON:
             return "YOU WON"
+
+        if (
+            self.current_mode == AGENT_MODE
+            and self.agent_environment is not None
+            and self.agent_environment.done
+        ):
+            return "AGENT STOPPED"
 
         if self.game_logic.is_stunned(
             current_time
@@ -444,9 +698,19 @@ class Game:
         )
 
         if self.show_bfs_path:
-            self.renderer.draw_debug_path(
-                self.bfs_path
+            path = (
+                self.bfs_round_trip
+                if self.current_mode == AGENT_MODE
+                else self.bfs_path
             )
+            self.renderer.draw_debug_path(
+                path
+            )
+
+            if self.agent_path:
+                self.renderer.draw_agent_path(
+                    self.agent_path
+                )
 
         self.renderer.draw_entities(
             self.entity_manager
@@ -487,6 +751,7 @@ class Game:
                 .has_cheese
             ),
             active_traps=active_traps,
+            mode=MODE_LABELS[self.current_mode],
             difficulty=self.target_difficulty,
             status=self.get_game_status(
                 current_time
@@ -516,7 +781,7 @@ class Game:
         """Draw the current frame."""
 
         if not self.has_started:
-            self.difficulty_menu.draw()
+            self.game_menu.draw()
 
         else:
             current_time = pygame.time.get_ticks()
