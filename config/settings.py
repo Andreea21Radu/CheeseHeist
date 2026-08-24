@@ -31,6 +31,21 @@ TRAP_COUNT = 5
 EXTRA_PASSAGE_RATIO = 0.12
 
 # -------------------------------------------------
+# dificultate
+# -------------------------------------------------
+
+DIFFICULTY_LEVELS = (
+    "easy",
+    "medium",
+    "hard",
+)
+
+DEFAULT_DIFFICULTY = "medium"
+
+EASY_SCORE_LIMIT = 29.0
+MEDIUM_SCORE_LIMIT = 32.0
+
+# -------------------------------------------------
 # layout
 # -------------------------------------------------
 

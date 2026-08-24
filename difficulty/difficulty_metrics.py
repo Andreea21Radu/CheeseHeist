@@ -1,6 +1,7 @@
 """Calculeaza metricile de dificultate pentru un nivel."""
 
 from typing import Optional
+from config import settings
 
 from generation.level_manager import LevelManager
 from generation.level_validator import LevelValidator
@@ -126,3 +127,27 @@ def calculate_difficulty_score(
     )
 
     return round(score, 2)
+
+def classify_difficulty(score: float) -> str:
+    """Transforma scorul intr-un nivel de dificultate."""
+
+    if score < settings.EASY_SCORE_LIMIT:
+        return "easy"
+
+    if score < settings.MEDIUM_SCORE_LIMIT:
+        return "medium"
+
+    return "hard"
+
+
+def get_level_difficulty(
+    level: LevelManager,
+) -> Optional[str]:
+    """Returneaza dificultatea nivelului."""
+
+    score = calculate_difficulty_score(level)
+
+    if score is None:
+        return None
+
+    return classify_difficulty(score)
