@@ -53,6 +53,17 @@ GA_POPULATION_SIZE = 10
 GA_GENERATIONS = 10
 
 # -------------------------------------------------
+# Q-learning
+# -------------------------------------------------
+
+Q_LEARNING_EPISODES = 2500
+Q_LEARNING_RATE = 0.2
+Q_DISCOUNT_FACTOR = 0.95
+Q_INITIAL_EPSILON = 1.0
+Q_MIN_EPSILON = 0.05
+Q_EPSILON_DECAY = 0.995
+
+# -------------------------------------------------
 # layout
 # -------------------------------------------------
 
